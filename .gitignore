@@ -1,0 +1,13 @@
+
+---
+
+### 📁 File 4: `.gitignore`
+
+```text
+__pycache__/
+*.py[cod]
+*$py.class
+*.db
+.env
+.venv
+venv/
