@@ -35,6 +35,12 @@ st.markdown("""
         text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
     }
     
+    .main-header p {
+        color: #cbd5e1 !important;
+        font-size: 1.1rem !important;
+        margin-top: 0.5rem !important;
+    }
+    
     /* Metric cards */
     [data-testid="stMetric"] {
         background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
@@ -45,12 +51,13 @@ st.markdown("""
     }
     
     [data-testid="stMetricLabel"] {
-        color: #94a3b8 !important;
+        color: #cbd5e1 !important;
         font-size: 0.9rem !important;
+        font-weight: 500 !important;
     }
     
     [data-testid="stMetricValue"] {
-        color: #3b82f6 !important;
+        color: #60a5fa !important;
         font-size: 1.8rem !important;
         font-weight: bold !important;
     }
@@ -59,16 +66,25 @@ st.markdown("""
     .stSuccess {
         background: linear-gradient(135deg, #064e3b 0%, #10b981 100%) !important;
         border: 2px solid #10b981 !important;
+        color: #ffffff !important;
     }
     
     .stWarning {
         background: linear-gradient(135deg, #78350f 0%, #f59e0b 100%) !important;
         border: 2px solid #f59e0b !important;
+        color: #ffffff !important;
     }
     
     .stInfo {
         background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%) !important;
         border: 2px solid #3b82f6 !important;
+        color: #ffffff !important;
+    }
+    
+    .stError {
+        background: linear-gradient(135deg, #7f1d1d 0%, #ef4444 100%) !important;
+        border: 2px solid #ef4444 !important;
+        color: #ffffff !important;
     }
     
     /* Sidebar styling */
@@ -77,8 +93,12 @@ st.markdown("""
         border-right: 2px solid #3b82f6;
     }
     
-    [data-testid="stSidebar"] h2 {
-        color: #3b82f6 !important;
+    [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+        color: #60a5fa !important;
+    }
+    
+    [data-testid="stSidebar"] label {
+        color: #cbd5e1 !important;
     }
     
     /* Buttons */
@@ -98,11 +118,30 @@ st.markdown("""
         box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6) !important;
     }
     
-    /* Dataframe styling */
+    /* Dataframe styling - IMPROVED READABILITY */
     .dataframe {
         background: #1e293b !important;
         border-radius: 10px !important;
         overflow: hidden !important;
+        color: #e0e6ed !important;
+    }
+    
+    .dataframe th {
+        background: #334155 !important;
+        color: #60a5fa !important;
+        font-weight: bold !important;
+        padding: 12px !important;
+    }
+    
+    .dataframe td {
+        background: #1e293b !important;
+        color: #e0e6ed !important;
+        padding: 10px !important;
+        border-bottom: 1px solid #334155 !important;
+    }
+    
+    .dataframe tr:hover {
+        background: #334155 !important;
     }
     
     /* Tab styling */
@@ -114,12 +153,50 @@ st.markdown("""
         background: #1e293b;
         border-radius: 10px 10px 0 0;
         padding: 10px 20px;
-        color: #94a3b8;
+        color: #cbd5e1;
+        font-weight: 500;
     }
     
     .stTabs [aria-selected="true"] {
         background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
         color: white !important;
+    }
+    
+    /* General text */
+    h1, h2, h3, h4, h5, h6 {
+        color: #60a5fa !important;
+    }
+    
+    p, li, span {
+        color: #e0e6ed !important;
+    }
+    
+    /* Market sentiment box */
+    .sentiment-box {
+        padding: 1.5rem;
+        border-radius: 12px;
+        text-align: center;
+        margin: 1rem 0;
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+    
+    .sentiment-bullish {
+        background: linear-gradient(135deg, #064e3b 0%, #10b981 100%);
+        border: 2px solid #10b981;
+        color: #ffffff;
+    }
+    
+    .sentiment-bearish {
+        background: linear-gradient(135deg, #7f1d1d 0%, #ef4444 100%);
+        border: 2px solid #ef4444;
+        color: #ffffff;
+    }
+    
+    .sentiment-mixed {
+        background: linear-gradient(135deg, #78350f 0%, #f59e0b 100%);
+        border: 2px solid #f59e0b;
+        color: #ffffff;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -325,7 +402,6 @@ def save_scan_result(symbol, signal, score, price, rsi, reasoning):
 
 def get_latest_scan_results():
     conn = sqlite3.connect(DB_NAME)
-    # Get the most recent scan for each symbol
     df = pd.read_sql_query("""
         SELECT * FROM scan_results 
         WHERE scan_time = (SELECT MAX(scan_time) FROM scan_results)
@@ -341,6 +417,7 @@ def check_open_positions(current_prices):
     open_trades = c.fetchall()
     conn.close()
     
+    closed_count = 0
     for trade in open_trades:
         trade_id, symbol, side, entry_price, sl, tp, amount, leverage = trade
         current_price = current_prices.get(symbol, entry_price)
@@ -349,10 +426,51 @@ def check_open_positions(current_prices):
             if current_price <= sl or current_price >= tp:
                 pnl = amount * ((current_price - entry_price) / entry_price) * leverage
                 update_trade(trade_id, current_price, pnl, "CLOSED")
+                closed_count += 1
         elif side == "SHORT":
             if current_price >= sl or current_price <= tp:
                 pnl = amount * ((entry_price - current_price) / entry_price) * leverage
                 update_trade(trade_id, current_price, pnl, "CLOSED")
+                closed_count += 1
+    
+    return closed_count
+
+def execute_auto_trades(scan_results, account_balance, leverage, risk_per_trade):
+    """Auto-execute paper trades based on scan results"""
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM trades WHERE status = 'OPEN'")
+    open_count = c.fetchone()[0]
+    conn.close()
+    
+    # Limit to 5 open positions at a time
+    if open_count >= 5:
+        return 0
+    
+    trades_executed = 0
+    position_size = account_balance * (risk_per_trade / 100) * leverage
+    
+    for _, signal in scan_results.iterrows():
+        if open_count + trades_executed >= 5:
+            break
+            
+        symbol = signal['symbol']
+        side = signal['signal']
+        price = signal['price']
+        reasoning = signal['reasoning']
+        
+        # Calculate SL and TP (2% SL, 4% TP for 1:2 risk/reward)
+        if side == "LONG":
+            stop_loss = price * 0.98
+            take_profit = price * 1.04
+        else:  # SHORT
+            stop_loss = price * 1.02
+            take_profit = price * 0.96
+        
+        log_trade(symbol, side, price, stop_loss, take_profit, position_size, leverage, reasoning)
+        trades_executed += 1
+    
+    return trades_executed
 
 # ==========================================
 # 4. BACKGROUND SCANNER & TRADER
@@ -365,7 +483,6 @@ def run_full_scan():
     fg, fg_class = get_fear_and_greed()
     btc_dom = get_btc_dominance()
     
-    # Get all USDT pairs
     all_symbols = [k for k in tickers.keys() if k.endswith('USDT')]
     
     print(f"Scanning {len(all_symbols)} Bybit pairs...")
@@ -398,12 +515,46 @@ def run_full_scan():
     return scan_count
 
 def background_scanner(interval_minutes=5):
-    """Runs the scanner every X minutes in the background"""
+    """Runs the scanner and auto-trader every X minutes in the background"""
     while True:
         try:
+            # Run scan
             run_full_scan()
+            
+            # Auto-trade if enabled (check session state via file)
+            if os.path.exists('auto_trader_enabled.flag'):
+                scan_df = get_latest_scan_results()
+                if not scan_df.empty:
+                    # Read account settings from file
+                    account_balance = 10000.0
+                    leverage = 10
+                    risk_per_trade = 2
+                    
+                    if os.path.exists('account_settings.txt'):
+                        with open('account_settings.txt', 'r') as f:
+                            lines = f.readlines()
+                            for line in lines:
+                                if 'balance=' in line:
+                                    account_balance = float(line.split('=')[1].strip())
+                                elif 'leverage=' in line:
+                                    leverage = int(line.split('=')[1].strip())
+                                elif 'risk=' in line:
+                                    risk_per_trade = int(line.split('=')[1].strip())
+                    
+                    trades_executed = execute_auto_trades(scan_df, account_balance, leverage, risk_per_trade)
+                    if trades_executed > 0:
+                        print(f"[{datetime.now()}] Auto-executed {trades_executed} paper trades")
+            
+            # Check open positions
+            tickers = get_bybit_tickers()
+            current_prices = {k: float(v['lastPrice']) for k, v in tickers.items()}
+            closed = check_open_positions(current_prices)
+            if closed > 0:
+                print(f"[{datetime.now()}] Closed {closed} positions")
+                
         except Exception as e:
             print(f"Background scanner error: {e}")
+        
         time.sleep(interval_minutes * 60)
 
 def start_background_scanner():
@@ -482,7 +633,7 @@ if 'last_scan_time' not in st.session_state:
     st.session_state.last_scan_time = None
 
 # Header
-st.markdown('<div class="main-header"><h1>🚀 Vibe Trading Pro</h1><p style="color: #cbd5e1; font-size: 1.1rem; margin-top: 0.5rem;">Adaptive Crypto Scanner & Paper Trader | Scanning ALL Bybit Pairs</p></div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header"><h1>🚀 Vibe Trading Pro</h1><p>Adaptive Crypto Scanner & Paper Trader | Scanning ALL Bybit Pairs 24/7</p></div>', unsafe_allow_html=True)
 
 # Live Price Feed
 col1, col2, col3, col4, col5, col6 = st.columns(6)
@@ -492,31 +643,81 @@ try:
     fg, fg_class = get_fear_and_greed()
     btc_dom = get_btc_dominance()
     
-    btc_price = float(tickers.get('BTCUSDT', {}).get('lastPrice', 0))
-    eth_price = float(tickers.get('ETHUSDT', {}).get('lastPrice', 0))
-    xrp_price = float(tickers.get('XRPUSDT', {}).get('lastPrice', 0))
-    sol_price = float(tickers.get('SOLUSDT', {}).get('lastPrice', 0))
-    
-    col1.metric("BTC", f"${btc_price:,.2f}" if btc_price > 0 else "N/A")
-    col2.metric("ETH", f"${eth_price:,.2f}" if eth_price > 0 else "N/A")
-    col3.metric("XRP", f"${xrp_price:,.4f}" if xrp_price > 0 else "N/A")
-    col4.metric("SOL", f"${sol_price:,.2f}" if sol_price > 0 else "N/A")
-    col5.metric("Fear & Greed", f"{fg} ({fg_class})")
-    col6.metric("BTC Dominance", f"{btc_dom:.2f}%")
+    if tickers:
+        btc_price = float(tickers.get('BTCUSDT', {}).get('lastPrice', 0))
+        eth_price = float(tickers.get('ETHUSDT', {}).get('lastPrice', 0))
+        xrp_price = float(tickers.get('XRPUSDT', {}).get('lastPrice', 0))
+        sol_price = float(tickers.get('SOLUSDT', {}).get('lastPrice', 0))
+        
+        col1.metric("BTC", f"${btc_price:,.2f}" if btc_price > 0 else "N/A")
+        col2.metric("ETH", f"${eth_price:,.2f}" if eth_price > 0 else "N/A")
+        col3.metric("XRP", f"${xrp_price:,.4f}" if xrp_price > 0 else "N/A")
+        col4.metric("SOL", f"${sol_price:,.2f}" if sol_price > 0 else "N/A")
+        col5.metric("Fear & Greed", f"{fg} ({fg_class})")
+        col6.metric("BTC Dominance", f"{btc_dom:.2f}%")
+    else:
+        st.error("⚠️ Unable to fetch live price data. Retrying...")
 except Exception as e:
-    st.error(f"Error fetching live data: {e}")
+    st.error(f"⚠️ Error fetching live data: {e}")
 
 st.markdown("---")
+
+# Market Sentiment Indicator
+scan_df = get_latest_scan_results()
+if not scan_df.empty:
+    long_count = len(scan_df[scan_df['signal'] == 'LONG'])
+    short_count = len(scan_df[scan_df['signal'] == 'SHORT'])
+    total = long_count + short_count
+    
+    if total > 0:
+        long_pct = (long_count / total) * 100
+        short_pct = (short_count / total) * 100
+        
+        if long_pct >= 65:
+            sentiment = "BULLISH"
+            sentiment_class = "sentiment-bullish"
+            sentiment_icon = "🟢"
+        elif short_pct >= 65:
+            sentiment = "BEARISH"
+            sentiment_class = "sentiment-bearish"
+            sentiment_icon = "🔴"
+        else:
+            sentiment = "MIXED"
+            sentiment_class = "sentiment-mixed"
+            sentiment_icon = "🟡"
+        
+        st.markdown(f"""
+        <div class="{sentiment_class}">
+            {sentiment_icon} Market Sentiment: {sentiment}<br>
+            <span style="font-size: 1rem; font-weight: normal;">
+                LONG Signals: {long_count} ({long_pct:.1f}%) | SHORT Signals: {short_count} ({short_pct:.1f}%)
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
 
 # Sidebar Controls
 st.sidebar.header("⚙️ Control Panel")
 st.session_state.scanner_enabled = st.sidebar.toggle("🔍 Auto Scanner (Every 5 min)", value=st.session_state.scanner_enabled)
 st.session_state.auto_trader_enabled = st.sidebar.toggle("🤖 Auto Paper Trader", value=st.session_state.auto_trader_enabled)
 
+# Save auto trader state to file for background thread
+if st.session_state.auto_trader_enabled:
+    with open('auto_trader_enabled.flag', 'w') as f:
+        f.write('enabled')
+else:
+    if os.path.exists('auto_trader_enabled.flag'):
+        os.remove('auto_trader_enabled.flag')
+
 st.sidebar.markdown("### Account Settings")
 st.session_state.account_balance = st.sidebar.number_input("Starting Balance (USD)", value=st.session_state.account_balance, step=1000.0)
 leverage = st.sidebar.selectbox("Leverage", [1, 3, 5, 10, 20], index=3)
 risk_per_trade = st.sidebar.slider("Risk per Trade (%)", 1, 5, 2)
+
+# Save account settings to file for background thread
+with open('account_settings.txt', 'w') as f:
+    f.write(f"balance={st.session_state.account_balance}\n")
+    f.write(f"leverage={leverage}\n")
+    f.write(f"risk={risk_per_trade}\n")
 
 if st.sidebar.button("🔄 Manual Scan Now"):
     with st.spinner("Running manual scan of all Bybit pairs..."):
@@ -534,18 +735,14 @@ with tab1:
     if st.session_state.last_scan_time:
         st.info(f"🕐 Last scan: {st.session_state.last_scan_time.strftime('%Y-%m-%d %H:%M:%S')} | Next auto-scan in ~5 minutes")
     
-    scan_df = get_latest_scan_results()
-    
     if not scan_df.empty:
         st.subheader(f"✅ {len(scan_df)} Trade Opportunities Found")
         
-        # Display LONG signals
         long_signals = scan_df[scan_df['signal'] == 'LONG']
         if not long_signals.empty:
             st.markdown("### 🟢 LONG Signals")
             st.dataframe(long_signals, use_container_width=True)
         
-        # Display SHORT signals
         short_signals = scan_df[scan_df['signal'] == 'SHORT']
         if not short_signals.empty:
             st.markdown("### 🔴 SHORT Signals")
@@ -557,10 +754,7 @@ with tab2:
     st.header("Paper Trading Dashboard")
     
     if st.session_state.auto_trader_enabled:
-        st.success("🟢 Auto Trader ACTIVE")
-        tickers = get_bybit_tickers()
-        current_prices = {k: float(v['lastPrice']) for k, v in tickers.items()}
-        check_open_positions(current_prices)
+        st.success("🟢 Auto Trader ACTIVE - Running 24/7 in background")
     else:
         st.warning("🔴 Auto Trader OFF")
 
@@ -585,12 +779,16 @@ with tab3:
     st.markdown(report)
     
     st.subheader("System Status")
+    scanner_status = "🟢 Running 24/7" if 'scanner_thread' in st.session_state and st.session_state.scanner_thread.is_alive() else "🔴 Stopped"
+    trader_status = "🟢 Active" if st.session_state.auto_trader_enabled else "🔴 Inactive"
+    
     st.markdown(f"""
-    - **Background Scanner**: {'🟢 Running' if 'scanner_thread' in st.session_state and st.session_state.scanner_thread.is_alive() else '🔴 Stopped'}
+    - **Background Scanner**: {scanner_status}
+    - **Auto Trader**: {trader_status}
     - **Scanning Interval**: Every 5 minutes
     - **Total Bybit Pairs**: {len([k for k in get_bybit_tickers().keys() if k.endswith('USDT')])}
     - **Database**: {DB_NAME}
     """)
 
 st.markdown("---")
-st.markdown("<p style='text-align: center; color: #64748b;'>Built for continuous 24/7 operation | All data from Bybit, CoinGecko, Alternative.me</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #94a3b8;'>Built for continuous 24/7 operation | All data from Bybit, CoinGecko, Alternative.me</p>", unsafe_allow_html=True)
